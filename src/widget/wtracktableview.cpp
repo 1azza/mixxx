@@ -1,6 +1,7 @@
 #include "widget/wtracktableview.h"
 
 #include <QDrag>
+#include <QMenu>
 #include <QModelIndex>
 #include <QScrollBar>
 #include <QShortcut>
@@ -437,6 +438,10 @@ void WTrackTableView::slotMouseDoubleClicked(const QModelIndex& index) {
     if (doubleClickAction == DlgPrefLibrary::TrackDoubleClickAction::LoadToDeck &&
             pTrackModel->hasCapabilities(
                     TrackModel::Capability::LoadToDeck)) {
+        if (pTrackModel->isTrackDeferred(index)) {
+            pTrackModel->loadDeferredTrack(index, QString(), false);
+            return;
+        }
         TrackPointer pTrack = pTrackModel->getTrack(index);
         if (pTrack) {
             emit loadTrack(pTrack);
@@ -649,6 +654,12 @@ void WTrackTableView::showTrackMenu(const QPoint pos, const QModelIndex& index) 
     if (indices.isEmpty()) {
         return;
     }
+    auto* pTrackModel = getTrackModel();
+    if (pTrackModel && pTrackModel->isTrackDeferred(indices.first())) {
+        // The regular track menu needs a track, which doesn't exist yet
+        showDeferredTrackMenu(pos, indices.first());
+        return;
+    }
     m_pTrackMenu->loadTrackModelIndices(indices);
     m_pTrackMenu->updateMenus();
     m_pTrackMenu->setTrackPropertyName(columnNameOfIndex(index));
@@ -657,6 +668,62 @@ void WTrackTableView::showTrackMenu(const QPoint pos, const QModelIndex& index) 
 
     m_pTrackMenu->popup(pos);
     // WTrackmenu emits restoreCurrentViewStateOrIndex() on hide if required
+}
+
+void WTrackTableView::showDeferredTrackMenu(const QPoint& pos, const QModelIndex& index) {
+    auto* pTrackModel = getTrackModel();
+    VERIFY_OR_DEBUG_ASSERT(pTrackModel) {
+        return;
+    }
+    // Deleted on close
+    auto* pMenu = new QMenu(this);
+    pMenu->setAttribute(Qt::WA_DeleteOnClose);
+    const QPersistentModelIndex persistentIndex(index);
+    const auto addLoadAction = [this, pMenu, persistentIndex](
+                                       QMenu* pParentMenu,
+                                       const QString& label,
+                                       const QString& group) {
+        QAction* pAction = pParentMenu->addAction(label);
+        pAction->setEnabled(ControlObject::get(ConfigKey(group, "play")) <= 0.0 ||
+                PlayerManager::isPreviewDeckGroup(group));
+        connect(pAction, &QAction::triggered, this, [this, persistentIndex, group] {
+            auto* pTrackModel = getTrackModel();
+            if (pTrackModel && persistentIndex.isValid()) {
+                pTrackModel->loadDeferredTrack(persistentIndex, group, false);
+            }
+        });
+    };
+
+    const int numDecks = static_cast<int>(
+            ControlObject::get(ConfigKey(QStringLiteral("[App]"), QStringLiteral("num_decks"))));
+    for (int i = 0; i < numDecks; ++i) {
+        addLoadAction(pMenu,
+                tr("Load to Deck %1").arg(i + 1),
+                PlayerManager::groupForDeck(i));
+    }
+    const int numSamplers = static_cast<int>(ControlObject::get(
+            ConfigKey(QStringLiteral("[App]"), QStringLiteral("num_samplers"))));
+    if (numSamplers > 0) {
+        QMenu* pSamplerMenu = pMenu->addMenu(tr("Load to Sampler"));
+        for (int i = 0; i < numSamplers; ++i) {
+            addLoadAction(pSamplerMenu,
+                    tr("Sampler %1").arg(i + 1),
+                    PlayerManager::groupForSampler(i));
+        }
+    }
+    if (ControlObject::get(ConfigKey(QStringLiteral("[App]"),
+                QStringLiteral("num_preview_decks"))) > 0) {
+        addLoadAction(pMenu, tr("Load to Preview Deck"), PlayerManager::groupForPreviewDeck(0));
+    }
+    pMenu->addSeparator();
+    QAction* pFetchAction = pMenu->addAction(tr("Download"));
+    connect(pFetchAction, &QAction::triggered, this, [this, persistentIndex] {
+        auto* pTrackModel = getTrackModel();
+        if (pTrackModel && persistentIndex.isValid()) {
+            pTrackModel->fetchDeferredTrack(persistentIndex);
+        }
+    });
+    pMenu->popup(pos);
 }
 
 QString WTrackTableView::columnNameOfIndex(const QModelIndex& index) const {
@@ -739,7 +806,7 @@ void WTrackTableView::mouseMoveEvent(QMouseEvent* pEvent) {
         const QModelIndexList indices = getSelectedRows();
 
         for (const QModelIndex& index : indices) {
-            if (!index.isValid()) {
+            if (!index.isValid() || pTrackModel->isTrackDeferred(index)) {
                 continue;
             }
             locations.append(pTrackModel->getTrackLocation(index));
@@ -1535,6 +1602,10 @@ void WTrackTableView::loadSelectedTrackToGroup(const QString& group,
     }
     auto index = indices.at(0);
     auto* pTrackModel = getTrackModel();
+    if (pTrackModel && pTrackModel->isTrackDeferred(index)) {
+        pTrackModel->loadDeferredTrack(index, group, play);
+        return;
+    }
     TrackPointer pTrack;
     if (pTrackModel && (pTrack = pTrackModel->getTrack(index))) {
 #ifdef __STEM__

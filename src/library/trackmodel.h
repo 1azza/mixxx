@@ -110,6 +110,25 @@ class TrackModel {
     virtual TrackPointer getTrack(const QModelIndex& index) const = 0;
     virtual TrackPointer getTrackByRef(const TrackRef& trackRef) const = 0;
 
+    /// Some models list tracks that are not available locally yet, e.g.
+    /// search results of a web service. getTrack() returns nothing for
+    /// those until they have been fetched.
+    virtual bool isTrackDeferred(const QModelIndex& index) const {
+        Q_UNUSED(index);
+        return false;
+    }
+    /// Fetch a deferred track and load it into `group` once it is available.
+    /// An empty group loads it into the next available deck.
+    virtual void loadDeferredTrack(const QModelIndex& index, const QString& group, bool play) {
+        Q_UNUSED(index);
+        Q_UNUSED(group);
+        Q_UNUSED(play);
+    }
+    /// Fetch a deferred track without loading it.
+    virtual void fetchDeferredTrack(const QModelIndex& index) {
+        Q_UNUSED(index);
+    }
+
     /// Get the URL of the track at the given QModelIndex.
     ///
     /// This function should be used in favor of getTrackId() to allow

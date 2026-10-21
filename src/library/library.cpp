@@ -32,6 +32,7 @@
 #include "library/trackset/playlistfeature.h"
 #include "library/trackset/setlogfeature.h"
 #include "library/traktor/traktorfeature.h"
+#include "library/youtube/youtubefeature.h"
 #include "mixer/playermanager.h"
 #include "moc_library.cpp"
 #include "util/assert.h"
@@ -130,6 +131,8 @@ Library::Library(
             &Library::exportCrate, // signal-to-signal
             Qt::DirectConnection);
 #endif
+
+    addFeature(new YouTubeFeature(this, m_pConfig));
 
     m_pBrowseFeature = make_parented<BrowseFeature>(
             this, m_pConfig, pRecordingManager);

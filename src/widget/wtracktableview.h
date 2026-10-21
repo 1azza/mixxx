@@ -35,6 +35,8 @@ class WTrackTableView : public WLibraryTableView {
     void currentChanged(const QModelIndex& current, const QModelIndex& previous) override;
 #endif
     void contextMenuEvent(QContextMenuEvent * event) override;
+    /// Menu for tracks that still have to be fetched, see TrackModel::isTrackDeferred()
+    void showDeferredTrackMenu(const QPoint& pos, const QModelIndex& index);
     QString columnNameOfIndex(const QModelIndex& index) const;
     void onSearch(const QString& text) override;
     void onShow() override;
